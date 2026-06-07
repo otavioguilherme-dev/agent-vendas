@@ -14,7 +14,7 @@ st.set_page_config(
 
 # --- CONFIGURAÇÕES ---
 # Este Webhook só será usado se houver FOTO para o Gemini extrair o texto do modelo
-WEBHOOK_VENDAS_URL = "https://hook.us2.make.com/SUA_NOVA_URL_DE_VENDAS"
+WEBHOOK_VENDAS_URL = "https://hook.us2.make.com/58kq63uwxgpnxc39sgyr2qk88o7o3wrw"
 IMGBB_API_KEY = "c303da0c70a1655c79f00832f7b1456d"
 NOME_PLANILHA = "base_gaxetas.xlsx"  # Nome exato do seu arquivo Excel no GitHub
 
