@@ -95,8 +95,8 @@ texto_vendedor = st.text_input(
 
 st.divider()
 
-# NOVO Campo 3: Digitação da Medida Externa
-st.markdown("### 📐 3. Pesquise pela Medida Externa (Alternativa)")
+# Campo 3: Digitação da Medida Externa
+st.markdown("### 📐 3. Ou pesquise pela Medida Externa (Alternativa)")
 st.caption("Digite as dimensões ou parte da medida externa que o cliente informou.")
 medida_vendedor = st.text_input(
     "Medida para busca:",
@@ -118,8 +118,8 @@ def buscar_na_planilha(termo_modelo, termo_medida):
             
         resultado = df.copy()
         
-        # Se o usuário buscou por Modelo
-        if termo_modelo:
+        # Só filtra por modelo se o termo_modelo não for vazio
+        if termo_modelo and str(termo_modelo).strip():
             termo_mod = str(termo_modelo).strip().upper()
             if 'MODELO' in df.columns:
                 resultado = resultado[resultado['MODELO'].str.contains(termo_mod, na=False)]
@@ -130,13 +130,12 @@ def buscar_na_planilha(termo_modelo, termo_medida):
                 else:
                     resultado = resultado[resultado[df.columns[0]].str.contains(termo_mod, na=False)]
                     
-        # Se o usuário buscou por Medida Externa
-        if termo_medida:
+        # Só filtra por medida se o termo_medida não for vazio
+        if termo_medida and str(termo_medida).strip():
             termo_med = str(termo_medida).strip().upper()
             if 'MEDIDA-EXTERNA' in df.columns:
                 resultado = resultado[resultado['MEDIDA-EXTERNA'].str.contains(termo_med, na=False)]
             else:
-                # Caso o cabeçalho mude ligeiramente no Excel (ex: MEDIDA EXTERNA sem hífen)
                 coluna_medida = [c for c in df.columns if 'EXTERNA' in c]
                 if coluna_medida:
                     resultado = resultado[resultado[coluna_medida[0]].str.contains(termo_med, na=False)]
@@ -157,7 +156,7 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
         prosseguir = False
         
     if prosseguir:
-        # Se tiver foto, consulta o Make para a visão computacional ler a etiqueta
+        # Se tiver foto e o usuário não digitou texto, o Make entra em ação
         if foto_upload is not None and not modelo_identificado:
             with st.spinner("🤖 O Técnico Neto está analisando a foto da etiqueta..."):
                 try:
@@ -192,43 +191,45 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                 except Exception as e:
                     st.error(f"Erro na análise visual da etiqueta: {e}")
 
-        # Executa a busca cruzada no Excel
-        with st.spinner("🔍 Procurando dados correspondentes na tabela..."):
-            tabela_resultados = buscar_na_planilha(modelo_identificado, medida_identificada)
-            
-            if tabela_resultados is not None and not tabela_resultados.empty:
-                # Constrói mensagem de sucesso dinâmica baseado no que foi buscado
-                msg_sucesso = "Resultados localizados com sucesso!"
-                if modelo_identificado: msg_sucesso = f"Busca pelo modelo '{modelo_identificado}' concluída!"
-                elif medida_identificada: msg_sucesso = f"Busca pela medida '{medida_identificada}' concluída!"
-                
-                st.success(msg_sucesso)
-                
-                # Exibe a contagem de borrachas encontradas
-                st.info(f"📋 Encontrado(s) {len(tabela_resultados)} produto(s) correspondente(s):")
-                
-                for index, row in tabela_resultados.iterrows():
-                    st.markdown('<div class="vendas-card">', unsafe_allow_html=True)
-                    
-                    st.markdown(f"### 📦 Produto Localizado:")
-                    if 'SKU' in row:
-                        st.markdown(f"<span class='sku-destaque'>🛒 SKU: {row['SKU']}</span>", unsafe_allow_html=True)
-                    
-                    st.markdown(f"**🔹 MARCA:** {row.get('MARCA', 'N/A')} | **MODELO:** {row.get('MODELO', 'N/A')}")
-                    st.markdown(f"**🔹 PERFIL:** {row.get('PERFIL', 'N/A')} | **CÓDIGO INTERNO:** {row.get('CODIGO', 'N/A')}")
-                    st.divider()
-                    st.markdown(f"📐 **MEDIDA ENCAIXE:** {row.get('MEDIDA-ENCAIXE', 'N/A')}")
-                    st.markdown(f"📐 **MEDIDA EXTERNA:** {row.get('MEDIDA-EXTERNA', 'N/A')}")
-                    
-                    st.markdown('</div>', unsafe_allow_html=True)
+        # --- NOVO: Campo de Verificação para o Agente ---
+        # Se foi feita uma busca por imagem, mostra na tela o que a IA leu
+        if foto_upload is not None:
+            if modelo_identificado:
+                st.info(f"🤖 **Modelo identificado pela foto:** `{modelo_identificado}`")
             else:
-                st.error(f"❌ Nenhum produto localizado")
-                if modelo_identificado and medida_identificada:
-                    st.warning(f"Não encontramos combinações para o modelo **'{modelo_identificado}'** que também tivessem a medida **'{medida_identificada}'**.")
-                elif modelo_identificado:
-                    st.warning(f"O modelo **'{modelo_identificado}'** não foi encontrado na coluna MODELO da planilha.")
-                elif medida_identificada:
-                    st.warning(f"A medida **'{medida_identificada}'** não foi encontrada em nenhuma linha da coluna MEDIDA-EXTERNA.")
+                st.error("❌ A IA não conseguiu extrair nenhum modelo legível desta foto.")
+                prosseguir = False
+
+        # Executa a busca se tivermos algum critério válido após a análise
+        if prosseguir and (modelo_identificado or medida_identificada):
+            with st.spinner("🔍 Procurando dados correspondentes na tabela..."):
+                tabela_resultados = buscar_na_planilha(modelo_identificado, medida_identificada)
+                
+                if tabela_resultados is not None and not tabela_resultados.empty:
+                    msg_sucesso = "Resultados localizados com sucesso!"
+                    st.success(msg_sucesso)
+                    st.info(f"📋 Encontrado(s) {len(tabela_resultados)} produto(s) correspondente(s):")
+                    
+                    for index, row in tabela_resultados.iterrows():
+                        st.markdown('<div class="vendas-card">', unsafe_allow_html=True)
+                        st.markdown(f"### 📦 Produto Localizado:")
+                        if 'SKU' in row:
+                            st.markdown(f"<span class='sku-destaque'>🛒 SKU: {row['SKU']}</span>", unsafe_allow_html=True)
+                        
+                        st.markdown(f"**🔹 MARCA:** {row.get('MARCA', 'N/A')} | **MODELO:** {row.get('MODELO', 'N/A')}")
+                        st.markdown(f"**🔹 PERFIL:** {row.get('PERFIL', 'N/A')} | **CÓDIGO INTERNO:** {row.get('CODIGO', 'N/A')}")
+                        st.divider()
+                        st.markdown(f"📐 **MEDIDA ENCAIXE:** {row.get('MEDIDA-ENCAIXE', 'N/A')}")
+                        st.markdown(f"📐 **MEDIDA EXTERNA:** {row.get('MEDIDA-EXTERNA', 'N/A')}")
+                        st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.error(f"❌ Nenhum produto localizado")
+                    if modelo_identificado and medida_identificada:
+                        st.warning(f"Não encontramos combinações para o modelo **'{modelo_identificado}'** com a medida **'{medida_identificada}'**.")
+                    elif modelo_identificado:
+                        st.warning(f"O modelo **'{modelo_identificado}'** não foi encontrado na coluna MODELO da planilha.")
+                    elif medida_identificada:
+                        st.warning(f"A medida **'{medida_identificada}'** não foi encontrada na coluna MEDIDA-EXTERNA.")
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
 st.caption("© 2026 OGNET BORRACHAS - Divisão de Inteligência Comercial e Catálogo.")
