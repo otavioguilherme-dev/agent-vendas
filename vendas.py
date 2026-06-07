@@ -54,18 +54,18 @@ st.markdown("""
 
 # Cabeçalho Principal com Logo Local
 try:
-    st.image("LOGO_BANNER.jpg", width=350)
+    st.image("LOGO_BANNER.jpg", width=550)
 except Exception:
     pass  
 
-st.title("🔍 Localizador de Catálogo e SKU - Técnico Neto")
-st.markdown("Facilitador comercial para o time de vendas OGNET. Busca automatizada direto no banco de dados local.")
+st.title("🔍 Buscador de MARCA, MODELO, MEDIDAS e SKU - OGNET BORRACHAS")
+st.markdown("Facilitador comercial para o time de vendas OGNET BORRACHAS. Busca automatizada direto da nossa base de modelos.")
 st.divider()
 
-st.subheader("📋 Dados de Busca do Produto")
+st.subheader("📋 Busca do Produtos")
 
 # Passo 1: Imagem da Etiqueta
-st.markdown("### 📸 1. Foto da Etiqueta do Equipamento (Opcional)")
+st.markdown("### 📸 1. Foto da Etiqueta do Equipamento, modelo comercial. (Opcional)")
 st.caption("Anexe a foto da etiqueta para a IA identificar o modelo comercial automaticamente.")
 foto_upload = st.file_uploader("Selecione a foto da etiqueta:", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
 
@@ -74,7 +74,7 @@ if foto_upload is not None:
     st.divider()
 
 # Passo 2: Digitação Direta
-st.markdown("### ✍️ 2. Digitar Modelo Comercial (Caso não tenha foto)")
+st.markdown("### ✍️ 2. Digite o Modelo Comercial (Caso não tenha foto)")
 st.caption("Digite o modelo ou parte dele para buscar direto na tabela.")
 texto_vendedor = st.text_input(
     "Modelo para busca:",
