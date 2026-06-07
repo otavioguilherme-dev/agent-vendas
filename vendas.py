@@ -72,10 +72,10 @@ st.title("🔍 Buscador de MARCA, MODELO, MEDIDAS e SKU - OGNET BORRACHAS")
 st.markdown("Facilitador comercial para o time de vendas OGNET BORRACHAS. Busca automatizada direto da nossa base de modelos.")
 st.divider()
 
-st.subheader("📋 Busca do Produtos")
+st.subheader("📋 Critérios de Busca do Produto")
 
-# Passo 1: Imagem da Etiqueta
-st.markdown("### 📸 1. Foto da Etiqueta do Equipamento, modelo comercial. (Opcional)")
+# Campo 1: Imagem da Etiqueta
+st.markdown("### 📸 1. Foto da Etiqueta do Equipamento (Opcional)")
 st.caption("Anexe a foto da etiqueta para a IA identificar o modelo comercial automaticamente.")
 foto_upload = st.file_uploader("Selecione a foto da etiqueta:", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
 
@@ -83,9 +83,9 @@ if foto_upload is not None:
     st.image(foto_upload, caption="⚡ Etiqueta carregada para análise", width=400)
     st.divider()
 
-# Passo 2: Digitação Direta
+# Campo 2: Digitação Direta do Modelo
 st.markdown("### ✍️ 2. Digite o Modelo Comercial (Caso não tenha foto)")
-st.caption("Digite o modelo ou parte dele para buscar direto na tabela.")
+st.caption("Digite o modelo ou parte dele para buscar na tabela.")
 texto_vendedor = st.text_input(
     "Modelo para busca:",
     placeholder="Ex: BRM44, CRM33, DC44...",
@@ -93,33 +93,54 @@ texto_vendedor = st.text_input(
     key="busca_vendas"
 )
 
+st.divider()
+
+# NOVO Campo 3: Digitação da Medida Externa
+st.markdown("### 📐 3. Ou pesquise pela Medida Externa (Alternativa)")
+st.caption("Digite as dimensões ou parte da medida externa que o cliente informou.")
+medida_vendedor = st.text_input(
+    "Medida para busca:",
+    placeholder="Ex: 56X114, 68X160, 56...",
+    label_visibility="collapsed",
+    key="busca_medidas"
+)
+
 st.markdown("<br>", unsafe_allow_html=True)
 
 # --- FUNÇÃO DE BUSCA NA PLANILHA DO GITHUB ---
-def buscar_na_planilha(termo_busca):
+def buscar_na_planilha(termo_modelo, termo_medida):
     try:
-        # Carrega o arquivo Excel direto da raiz do repositório
         df = pd.read_excel("base_gaxetas.xlsx")
         
-        termo = str(termo_busca).strip().upper()
-        if not termo:
-            return None
-        
-        # Converte todas as colunas para string e maiúsculo para busca precisa
+        # Converte todas as colunas para string, limpa espaços e joga para maiúsculo
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.upper()
             
-        # Busca focada diretamente na sua coluna 'MODELO'
-        if 'MODELO' in df.columns:
-            resultado = df[df['MODELO'].str.contains(termo, na=False)]
-        else:
-            # Caso o nome mude por acidente, varre por proximidade nas outras colunas
-            coluna_modelo = [c for c in df.columns if 'MODELO' in c or 'PRODUTO' in c or 'CODIGO' in c]
-            if coluna_modelo:
-                resultado = df[df[coluna_modelo[0]].str.contains(termo, na=False)]
+        resultado = df.copy()
+        
+        # Se o usuário buscou por Modelo
+        if termo_modelo:
+            termo_mod = str(termo_modelo).strip().upper()
+            if 'MODELO' in df.columns:
+                resultado = resultado[resultado['MODELO'].str.contains(termo_mod, na=False)]
             else:
-                resultado = df[df[df.columns[0]].str.contains(termo, na=False)]
-            
+                coluna_modelo = [c for c in df.columns if 'MODELO' in c or 'PRODUTO' in c or 'CODIGO' in c]
+                if coluna_modelo:
+                    resultado = resultado[resultado[coluna_modelo[0]].str.contains(termo_mod, na=False)]
+                else:
+                    resultado = resultado[resultado[df.columns[0]].str.contains(termo_mod, na=False)]
+                    
+        # Se o usuário buscou por Medida Externa
+        if termo_medida:
+            termo_med = str(termo_medida).strip().upper()
+            if 'MEDIDA-EXTERNA' in df.columns:
+                resultado = resultado[resultado['MEDIDA-EXTERNA'].str.contains(termo_med, na=False)]
+            else:
+                # Caso o cabeçalho mude ligeiramente no Excel (ex: MEDIDA EXTERNA sem hífen)
+                coluna_medida = [c for c in df.columns if 'EXTERNA' in c]
+                if coluna_medida:
+                    resultado = resultado[resultado[coluna_medida[0]].str.contains(termo_med, na=False)]
+                    
         return resultado
     except Exception as e:
         st.error(f"Erro ao ler o arquivo 'base_gaxetas.xlsx' no GitHub: {e}")
@@ -128,14 +149,16 @@ def buscar_na_planilha(termo_busca):
 # Botão de Execução
 if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_container_width=True):
     modelo_identificado = texto_vendedor.strip()
+    medida_identificada = medida_vendedor.strip()
     prosseguir = True
     
-    if not modelo_identificado and foto_upload is None:
-        st.warning("Por favor, digite o modelo ou anexe a foto da etiqueta para realizar a busca.")
+    if not modelo_identificado and not medida_identificada and foto_upload is None:
+        st.warning("Por favor, preencha pelo menos um critério (Foto, Modelo ou Medida) para realizar a busca.")
         prosseguir = False
         
     if prosseguir:
-        if foto_upload is not None:
+        # Se tiver foto, consulta o Make para a visão computacional ler a etiqueta
+        if foto_upload is not None and not modelo_identificado:
             with st.spinner("🤖 O Técnico Neto está analisando a foto da etiqueta..."):
                 try:
                     file_bytes = foto_upload.read()
@@ -169,32 +192,43 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                 except Exception as e:
                     st.error(f"Erro na análise visual da etiqueta: {e}")
 
-        # Executa a busca local dentro do Excel baseado no modelo
-        if modelo_identificado:
-            with st.spinner(f"🔍 Procurando dados para o modelo '{modelo_identificado}' na tabela..."):
-                tabela_resultados = buscar_na_planilha(modelo_identificado)
+        # Executa a busca cruzada no Excel
+        with st.spinner("🔍 Procurando dados correspondentes na tabela..."):
+            tabela_resultados = buscar_na_planilha(modelo_identificado, medida_identificada)
+            
+            if tabela_resultados is not None and not tabela_resultados.empty:
+                # Constrói mensagem de sucesso dinâmica baseado no que foi buscado
+                msg_sucesso = "Resultados localizados com sucesso!"
+                if modelo_identificado: msg_sucesso = f"Busca pelo modelo '{modelo_identificado}' concluída!"
+                elif medida_identificada: msg_sucesso = f"Busca pela medida '{medida_identificada}' concluída!"
                 
-                if tabela_resultados is not None and not tabela_resultados.empty:
-                    st.success(f"Modelo '{modelo_identificado}' Localizado com Sucesso!")
+                st.success(msg_sucesso)
+                
+                # Exibe a contagem de borrachas encontradas
+                st.info(f"📋 Encontrado(s) {len(tabela_resultados)} produto(s) correspondente(s):")
+                
+                for index, row in tabela_resultados.iterrows():
+                    st.markdown('<div class="vendas-card">', unsafe_allow_html=True)
                     
-                    for index, row in tabela_resultados.iterrows():
-                        st.markdown('<div class="vendas-card">', unsafe_allow_html=True)
-                        
-                        # Exibe o SKU em destaque vibrante para o vendedor copiar rápido
-                        st.markdown(f"### 📦 Produto Localizado:")
-                        if 'SKU' in row:
-                            st.markdown(f"<span class='sku-destaque'>🛒 SKU: {row['SKU']}</span>", unsafe_allow_html=True)
-                        
-                        # Organiza as colunas novas em formato estruturado
-                        st.markdown(f"**🔹 MARCA:** {row.get('MARCA', 'N/A')} | **MODELO:** {row.get('MODELO', 'N/A')}")
-                        st.markdown(f"**🔹 PERFIL:** {row.get('PERFIL', 'N/A')} | **CÓDIGO INTERNO:** {row.get('CODIGO', 'N/A')}")
-                        st.divider()
-                        st.markdown(f"📐 **MEDIDA ENCAIXE:** {row.get('MEDIDA-ENCAIXE', 'N/A')}")
-                        st.markdown(f"📐 **MEDIDA EXTERNA:** {row.get('MEDIDA-EXTERNA', 'N/A')}")
-                        
-                        st.markdown('</div>', unsafe_allow_html=True)
-                else:
-                    st.warning(f"⚠️ Nenhuma especificação técnica foi encontrada para o modelo '{modelo_identificado}' no arquivo base_gaxetas.xlsx.")
+                    st.markdown(f"### 📦 Produto Localizado:")
+                    if 'SKU' in row:
+                        st.markdown(f"<span class='sku-destaque'>🛒 SKU: {row['SKU']}</span>", unsafe_allow_html=True)
+                    
+                    st.markdown(f"**🔹 MARCA:** {row.get('MARCA', 'N/A')} | **MODELO:** {row.get('MODELO', 'N/A')}")
+                    st.markdown(f"**🔹 PERFIL:** {row.get('PERFIL', 'N/A')} | **CÓDIGO INTERNO:** {row.get('CODIGO', 'N/A')}")
+                    st.divider()
+                    st.markdown(f"📐 **MEDIDA ENCAIXE:** {row.get('MEDIDA-ENCAIXE', 'N/A')}")
+                    st.markdown(f"📐 **MEDIDA EXTERNA:** {row.get('MEDIDA-EXTERNA', 'N/A')}")
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.error(f"❌ Nenhum produto localizado")
+                if modelo_identificado and medida_identificada:
+                    st.warning(f"Não encontramos combinações para o modelo **'{modelo_identificado}'** que também tivessem a medida **'{medida_identificada}'**.")
+                elif modelo_identificado:
+                    st.warning(f"O modelo **'{modelo_identificado}'** não foi encontrado na coluna MODELO da planilha.")
+                elif medida_identificada:
+                    st.warning(f"A medida **'{medida_identificada}'** não foi encontrada em nenhuma linha da coluna MEDIDA-EXTERNA.")
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
 st.caption("© 2026 OGNET BORRACHAS - Divisão de Inteligência Comercial e Catálogo.")
