@@ -89,7 +89,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 def buscar_na_planilha(termo_busca):
     try:
         # Carrega o arquivo Excel carregado na raiz do GitHub
-        df = pd.read_excel base_gaxetas.xlsx
+        df = pd.read_excel 'base_gaxetas.xlsx'
         
         termo = str(termo_busca).strip().upper()
         if not termo:
