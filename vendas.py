@@ -143,7 +143,21 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                         response = requests.post(WEBHOOK_VENDAS_URL, data=payload, timeout=30)
                         
                         if response.status_code == 200:
-                            modelo_identificado = response.text.replace('{"result":"', '').replace('"}', '').strip()
+                            retorno_bruto = response.text.strip()
+                            
+                            # Tratamento Super Blindado para extrair só o modelo (ex: DC44)
+                            try:
+                                if retorno_bruto.startswith('{'):
+                                    js = json.loads(retorno_bruto)
+                                    retorno_bruto = js.get("result", js.get("resposta_ia", retorno_bruto))
+                            except Exception:
+                                pass
+                            
+                            # Limpa aspas, chaves e textos padrões que a IA possa ter mandado junto
+                            retorno_bruto = re.sub(r'[\{\}\[\]"\'\n\r]', '', retorno_bruto)
+                            retorno_bruto = retorno_bruto.replace('result:', '').replace('resposta_ia:', '')
+                            
+                            modelo_identificado = retorno_bruto.strip()
                 except Exception as e:
                     st.error(f"Erro na análise visual da etiqueta: {e}")
 
@@ -167,4 +181,4 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                     st.warning(f"⚠️ Nenhuma especificação técnica foi encontrada para o modelo '{modelo_identificado}' no arquivo base_gaxetas.xlsx.")
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.caption("© 2026 OGNET BORRACHAS - Divisão de Inteligência Comercial e Catálogo.")
+st.caption("© 2026 OGNET BORRACHAS")
