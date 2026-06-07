@@ -89,7 +89,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 def buscar_na_planilha(termo_busca):
     try:
         # Carrega o arquivo Excel carregado na raiz do GitHub
-        df = pd.read_excel(NOME_PLANILHA)
+        df = pd.read_excel base_gaxetas.xlsx
         
         termo = str(termo_busca).strip().upper()
         if not termo:
@@ -111,7 +111,7 @@ def buscar_na_planilha(termo_busca):
             
         return resultado
     except Exception as e:
-        st.error(f"Erro ao ler o arquivo '{NOME_PLANILHA}' no GitHub: {e}")
+        st.error(f"Erro ao ler o arquivo 'base_gaxetas.xlsx' no GitHub: {e}")
         return None
 
 # Botão de Execução
