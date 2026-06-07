@@ -3,7 +3,7 @@ import requests
 import json
 import base64
 import re
-import pandas as pd  # Biblioteca para ler a planilha do GitHub
+import pandas as pd
 
 # Configuração visual da página
 st.set_page_config(
@@ -13,10 +13,9 @@ st.set_page_config(
 )
 
 # --- CONFIGURAÇÕES ---
-# Este Webhook só será usado se houver FOTO para o Gemini extrair o texto do modelo
 WEBHOOK_VENDAS_URL = "https://hook.us2.make.com/58kq63uwxgpnxc39sgyr2qk88o7o3wrw"
 IMGBB_API_KEY = "c303da0c70a1655c79f00832f7b1456d"
-NOME_PLANILHA = "base_gaxetas.xlsx"  # Nome exato do seu arquivo Excel no GitHub
+NOME_PLANILHA = "base_gaxetas.xlsx"
 
 # Customização visual com as cores oficiais OGNET (Azul: #1B2E7C | Laranja: #E96A23)
 st.markdown("""
@@ -44,10 +43,21 @@ st.markdown("""
     .vendas-card {
         background-color: #f1f3f9;
         border-left: 6px solid #1B2E7C;
-        padding: 25px;
+        padding: 22px;
         border-radius: 8px;
-        margin-top: 20px;
+        margin-top: 15px;
         box-shadow: 0px 2px 8px rgba(0,0,0,0.05);
+    }
+    .sku-destaque {
+        font-size: 20px;
+        color: #E96A23;
+        font-weight: bold;
+        background-color: #fff;
+        padding: 5px 10px;
+        border-radius: 4px;
+        border: 1px dashed #E96A23;
+        display: inline-block;
+        margin-bottom: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -78,7 +88,7 @@ st.markdown("### ✍️ 2. Digite o Modelo Comercial (Caso não tenha foto)")
 st.caption("Digite o modelo ou parte dele para buscar direto na tabela.")
 texto_vendedor = st.text_input(
     "Modelo para busca:",
-    placeholder="Ex: BRM44, CRM33, REFRIGERADOR...",
+    placeholder="Ex: BRM44, CRM33, DC44...",
     label_visibility="collapsed",
     key="busca_vendas"
 )
@@ -88,8 +98,8 @@ st.markdown("<br>", unsafe_allow_html=True)
 # --- FUNÇÃO DE BUSCA NA PLANILHA DO GITHUB ---
 def buscar_na_planilha(termo_busca):
     try:
-        # Carrega o arquivo Excel carregado na raiz do GitHub
-        df = pd.read_excel ("base_gaxetas.xlsx")
+        # Carrega o arquivo Excel direto da raiz do repositório
+        df = pd.read_excel("base_gaxetas.xlsx")
         
         termo = str(termo_busca).strip().upper()
         if not termo:
@@ -99,15 +109,16 @@ def buscar_na_planilha(termo_busca):
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.upper()
             
-        # Busca inteligente: tenta achar colunas com nomes comuns de identificação
-        coluna_modelo = [c for c in df.columns if 'MODELO' in c or 'PRODUTO' in c or 'CODIGO' in c]
-        
-        if coluna_modelo:
-            # Filtra linhas onde a coluna de modelo contém o termo buscado
-            resultado = df[df[coluna_modelo[0]].str.contains(termo, na=False)]
+        # Busca focada diretamente na sua coluna 'MODELO'
+        if 'MODELO' in df.columns:
+            resultado = df[df['MODELO'].str.contains(termo, na=False)]
         else:
-            # Caso não ache uma coluna específica, varre a primeira coluna da planilha
-            resultado = df[df[df.columns[0]].str.contains(termo, na=False)]
+            # Caso o nome mude por acidente, varre por proximidade nas outras colunas
+            coluna_modelo = [c for c in df.columns if 'MODELO' in c or 'PRODUTO' in c or 'CODIGO' in c]
+            if coluna_modelo:
+                resultado = df[df[coluna_modelo[0]].str.contains(termo, na=False)]
+            else:
+                resultado = df[df[df.columns[0]].str.contains(termo, na=False)]
             
         return resultado
     except Exception as e:
@@ -124,7 +135,6 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
         prosseguir = False
         
     if prosseguir:
-        # Se tiver foto, o Make entra em ação só para o Gemini ler o texto da etiqueta
         if foto_upload is not None:
             with st.spinner("🤖 O Técnico Neto está analisando a foto da etiqueta..."):
                 try:
@@ -145,7 +155,6 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                         if response.status_code == 200:
                             retorno_bruto = response.text.strip()
                             
-                            # Tratamento Super Blindado para extrair só o modelo (ex: DC44)
                             try:
                                 if retorno_bruto.startswith('{'):
                                     js = json.loads(retorno_bruto)
@@ -153,7 +162,6 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                             except Exception:
                                 pass
                             
-                            # Limpa aspas, chaves e textos padrões que a IA possa ter mandado junto
                             retorno_bruto = re.sub(r'[\{\}\[\]"\'\n\r]', '', retorno_bruto)
                             retorno_bruto = retorno_bruto.replace('result:', '').replace('resposta_ia:', '')
                             
@@ -161,7 +169,7 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                 except Exception as e:
                     st.error(f"Erro na análise visual da etiqueta: {e}")
 
-        # Executa a busca local instantânea dentro do Excel
+        # Executa a busca local dentro do Excel baseado no modelo
         if modelo_identificado:
             with st.spinner(f"🔍 Procurando dados para o modelo '{modelo_identificado}' na tabela..."):
                 tabela_resultados = buscar_na_planilha(modelo_identificado)
@@ -171,14 +179,22 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                     
                     for index, row in tabela_resultados.iterrows():
                         st.markdown('<div class="vendas-card">', unsafe_allow_html=True)
-                        st.markdown(f"### 📦 Produto Localizado:")
                         
-                        # Lista dinamicamente todas as colunas que você preencheu no Excel
-                        for coluna in tabela_resultados.columns:
-                            st.markdown(f"**🔹 {coluna}:** {row[coluna]}")
+                        # Exibe o SKU em destaque vibrante para o vendedor copiar rápido
+                        st.markdown(f"### 📦 Produto Localizado:")
+                        if 'SKU' in row:
+                            st.markdown(f"<span class='sku-destaque'>🛒 SKU: {row['SKU']}</span>", unsafe_allow_html=True)
+                        
+                        # Organiza as colunas novas em formato estruturado
+                        st.markdown(f"**🔹 MARCA:** {row.get('MARCA', 'N/A')} | **MODELO:** {row.get('MODELO', 'N/A')}")
+                        st.markdown(f"**🔹 PERFIL:** {row.get('PERFIL', 'N/A')} | **CÓDIGO INTERNO:** {row.get('CODIGO', 'N/A')}")
+                        st.divider()
+                        st.markdown(f"📐 **MEDIDA ENCAIXE:** {row.get('MEDIDA-ENCAIXE', 'N/A')}")
+                        st.markdown(f"📐 **MEDIDA EXTERNA:** {row.get('MEDIDA-EXTERNA', 'N/A')}")
+                        
                         st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     st.warning(f"⚠️ Nenhuma especificação técnica foi encontrada para o modelo '{modelo_identificado}' no arquivo base_gaxetas.xlsx.")
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.caption("© 2026 OGNET BORRACHAS")
+st.caption("© 2026 OGNET BORRACHAS - Divisão de Inteligência Comercial e Catálogo.")
