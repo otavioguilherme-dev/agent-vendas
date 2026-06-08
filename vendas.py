@@ -94,7 +94,7 @@ texto_vendedor = st.text_input(
 st.divider()
 
 # Campo 3: Digitação da Medida Externa
-st.markdown("### 📐 3. Ou pesquise pela Medida Externa (canto a canto)")
+st.markdown("### 📐 3. Pesquise pela Medida Externa (canto a canto)")
 st.caption("Digite as dimensões ou parte da medida externa que o cliente informou.")
 medida_vendedor = st.text_input(
     "Medida para busca:",
