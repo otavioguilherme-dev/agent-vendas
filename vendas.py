@@ -1,9 +1,3 @@
-O erro continuou porque o código anterior usou um método de montagem da chave de API que o Python às vezes corta ou interpreta com caracteres invisíveis, fazendo com que a requisição ao Google falhasse em segundo plano.
-
-Vamos resolver isso agora com força bruta e de forma definitiva: juntei a chave de API em uma única linha de texto limpa e adicionei um sistema que exibe o erro exato na tela caso o Google recuse a imagem. Assim, não ficamos mais no escuro!
-
-Substitua todo o conteúdo do seu vendas.py no GitHub por esta versão corrigida e blindada:
-
 Python
 import streamlit as st
 import requests
