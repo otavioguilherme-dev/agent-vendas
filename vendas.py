@@ -1,10 +1,3 @@
-Entendi! Esse travamento do Make com o triângulo vermelho no Gemini e o aviso laranja no Webhook acontece porque a estrutura de variáveis dele está desalinhada com o que o Python está enviando.
-
-Como prometido na mensagem anterior, se não quiser perder tempo brigando com as caixas vermelhas do Make, vamos ativar a Solução de Emergência: ler a imagem diretamente pelo Python! Fazendo isso, nós eliminamos o Make do fluxo de imagem por completo, o processo fica 100% estável, instantâneo e você não gasta tarefas na nuvem. O próprio código do Streamlit vai usar a sua chave do Gemini para escanear a etiqueta.
-
-Abra o seu arquivo vendas.py no GitHub e substitua todo o conteúdo por esta versão direta e ultra-robusta:
-
-Python
 import streamlit as st
 import requests
 import json
