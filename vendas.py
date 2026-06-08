@@ -13,6 +13,9 @@ st.set_page_config(
 )
 
 # --- CONFIGURAÇÕES ---
+# URL oficial do seu cenário do Make
+WEBHOOK_VENDAS_URL = "https://hook.us2.make.com/58kq63uwxgpnxc39sgyr2qk88o7o3wrw"
+IMGBB_API_KEY = "c303da0c70a1655c79f00832f7b1456d"
 NOME_PLANILHA = "base_gaxetas.xlsx"
 
 # Customização visual com as cores oficiais OGNET (Azul: #1B2E7C | Laranja: #E96A23)
@@ -145,69 +148,52 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
     modelo_identificado = texto_vendedor.strip()
     medida_identificada = medida_vendedor.strip()
     prosseguir = True
-    erro_ia_detalhado = ""
     
     if not modelo_identificado and not medida_identificada and foto_upload is None:
         st.warning("Por favor, preencha pelo menos um critério (Foto, Modelo ou Medida) para realizar a busca.")
         prosseguir = False
         
     if prosseguir:
-        # Se tiver foto e o usuário não digitou texto, o Python consulta o Gemini DIRETO
+        # Se tiver foto e o usuário não digitou texto, o Make entra em ação
         if foto_upload is not None and not modelo_identificado:
-            with st.spinner("🤖 O Técnico Neto está analisando a foto da etiqueta diretamente na API..."):
+            with st.spinner("🤖 O Técnico Neto está analisando a foto da etiqueta..."):
                 try:
                     file_bytes = foto_upload.read()
                     base64_image = base64.b64encode(file_bytes).decode('utf-8')
                     
-                    url_gemini = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-                    headers = {"Content-Type": "application/json"}
+                    imgbb_url = "https://api.imgbb.com/1/upload"
+                    payload_imgbb = {"key": IMGBB_API_KEY, "image": base64_image, "expiration": 600}
+                    res_imgbb = requests.post(imgbb_url, data=payload_imgbb)
+                    res_data = res_imgbb.json()
                     
-                    prompt = "Você é o assistente de visão computacional da OGNET. Analise esta etiqueta técnica de geladeira, encontre o código do modelo comercial (Ex: BRM44, CRM33, DC44, BRM47B) e responda APENAS com o código do modelo em letras maiúsculas, sem frases, sem pontos e sem explicações."
-                    
-                    payload = {
-                        "contents": [{
-                            "parts": [
-                                {"text": prompt},
-                                {
-                                    "inlineData": {
-                                        "mimeType": "image/jpeg",
-                                        "data": base64_image
-                                    }
-                                }
-                            ]
-                        }]
-                    }
-                    
-                    # Chave de API direta e unificada
-                    api_key_limpa = "AIzaSyAsDh_Wl8eXWU9T9B69h-P4Y7E1_bm0-hA"
-                    params = {"key": api_key_limpa}
-                    
-                    response = requests.post(url_gemini, headers=headers, json=payload, params=params, timeout=30)
-                    
-                    if response.status_code == 200:
-                        res_json = response.json()
-                        retorno_bruto = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+                    if res_imgbb.status_code == 200 and res_data.get("success"):
+                        link_foto = res_data["data"]["url"]
                         
-                        # Captura o padrão do modelo (Ex: BRM47B, DC44)
-                        modelos_encontrados = re.findall(r'[A-Z]{2,4}\d{2,3}[A-Z]?', retorno_bruto.upper())
-                        if modelos_encontrados:
-                            modelo_identificado = modelos_encontrados[0]
-                        else:
-                            modelo_identificado = re.sub(r'[^A-Z0-9]', '', retorno_bruto.upper())
-                    else:
-                        erro_ia_detalhado = f"Status {response.status_code}: {response.text}"
+                        payload = {"foto": link_foto, "texto": "EXTRAIR_MODELO"}
+                        response = requests.post(WEBHOOK_VENDAS_URL, data=payload, timeout=30)
+                        
+                        if response.status_code == 200:
+                            retorno_bruto = response.text.strip()
+                            
+                            # Filtra aspas e limpa o texto vindo do Make
+                            retorno_bruto = re.sub(r'[\{\}\[\]"\'\n\r]', '', retorno_bruto)
+                            retorno_bruto = retorno_bruto.replace('result:', '').replace('resposta_ia:', '')
+                            
+                            # Captura o padrão de modelo técnico (Ex: BRM47B, DC44)
+                            modelos_encontrados = re.findall(r'[A-Z]{2,4}\d{2,3}[A-Z]?', retorno_bruto.upper())
+                            if modelos_encontrados:
+                                modelo_identificado = modelos_encontrados[0]
+                            else:
+                                modelo_identificado = re.sub(r'[^A-Z0-9]', '', retorno_bruto.upper()).strip()
                 except Exception as e:
-                    erro_ia_detalhado = str(e)
+                    st.error(f"Erro na análise visual: {e}")
 
         # --- Campo de Verificação para o Agente ---
         if foto_upload is not None:
-            if modelo_identificado and str(modelo_identificado).strip():
+            if modelo_identificado and str(modelo_identificado).strip() and "ACCEPTED" not in modelo_identificado.upper():
                 st.info(f"🤖 **Modelo identificado pela foto:** `{modelo_identificado}`")
             else:
-                st.error("❌ A IA não conseguiu extrair um modelo comercial válido.")
-                if erro_ia_detalhado:
-                    st.caption(f"🔧 Detalhe do log técnico: {erro_ia_detalhado}")
-                st.warning("Tente digitar o modelo manualmente no Campo 2 para seguir com o atendimento.")
+                st.error("❌ A IA não conseguiu extrair um modelo comercial válido. Tente digitar o modelo manualmente no Campo 2.")
                 prosseguir = False
 
         # Executa a busca se tivermos algum critério válido após a análise
