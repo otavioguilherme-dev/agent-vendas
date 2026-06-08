@@ -153,7 +153,7 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
     if prosseguir:
         # Se tiver foto e o usuário não digitou texto, usamos o Scanner de Visão Direto superestável
         if foto_upload is not None and not modelo_identificado:
-            with st.spinner("🤖 O Técnico Neto está escaneando o texto da etiqueta..."):
+            with st.spinner("🤖 O Especialista em vendas Ptávio Guilherme está escaneando o texto da etiqueta..."):
                 try:
                     file_bytes = foto_upload.read()
                     base64_image = base64.b64encode(file_bytes).decode('utf-8')
