@@ -177,27 +177,30 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                         if response.status_code == 200:
                             retorno_bruto = response.text.strip()
                             
-                            try:
-                                if retorno_bruto.startswith('{'):
-                                    js = json.loads(retorno_bruto)
-                                    retorno_bruto = js.get("result", js.get("resposta_ia", retorno_bruto))
-                            except Exception:
-                                pass
+                            # --- SUPER BLINDAGEM DA RESPOSTA ---
+                            # Tenta extrair qualquer palavra que pareça um modelo de geladeira (Ex: BRM47, DC44, CRM33)
+                            # Se o Make trouxer JSON estruturado ou texto com aspas, o regex isola o modelo real
+                            modelos_encontrados = re.findall(r'[A-Z]{2,4}\d{2,3}[A-Z]?', retorno_bruto.upper())
                             
-                            retorno_bruto = re.sub(r'[\{\}\[\]"\'\n\r]', '', retorno_bruto)
-                            retorno_bruto = retorno_bruto.replace('result:', '').replace('resposta_ia:', '')
-                            
-                            modelo_identificado = retorno_bruto.strip()
+                            if modelos_encontrados:
+                                modelo_identificado = modelos_encontrados[0]
+                            else:
+                                # Se não achar pelo padrão técnico, limpa caracteres especiais e tenta ler o texto puro
+                                retorno_bruto = re.sub(r'[\{\}\[\]"\'\n\r]', '', retorno_bruto)
+                                retorno_bruto = retorno_bruto.replace('result:', '').replace('resposta_ia:', '').strip()
+                                if retorno_bruto and len(retorno_bruto) < 15 and "ACCEPTED" not in retorno_bruto.upper():
+                                    modelo_identificado = retorno_bruto
+                                else:
+                                    modelo_identificado = ""
                 except Exception as e:
                     st.error(f"Erro na análise visual da etiqueta: {e}")
 
-        # --- NOVO: Campo de Verificação para o Agente ---
-        # Se foi feita uma busca por imagem, mostra na tela o que a IA leu
+        # --- Campo de Verificação para o Agente ---
         if foto_upload is not None:
-            if modelo_identificado:
+            if modelo_identificado and str(modelo_identificado).strip():
                 st.info(f"🤖 **Modelo identificado pela foto:** `{modelo_identificado}`")
             else:
-                st.error("❌ A IA não conseguiu extrair nenhum modelo legível desta foto.")
+                st.error("❌ A IA não conseguiu extrair um modelo comercial válido. Tente digitar o modelo manualmente no Campo 2.")
                 prosseguir = False
 
         # Executa a busca se tivermos algum critério válido após a análise
@@ -206,8 +209,7 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                 tabela_resultados = buscar_na_planilha(modelo_identificado, medida_identificada)
                 
                 if tabela_resultados is not None and not tabela_resultados.empty:
-                    msg_sucesso = "Resultados localizados com sucesso!"
-                    st.success(msg_sucesso)
+                    st.success("Resultados localizados com sucesso!")
                     st.info(f"📋 Encontrado(s) {len(tabela_resultados)} produto(s) correspondente(s):")
                     
                     for index, row in tabela_resultados.iterrows():
