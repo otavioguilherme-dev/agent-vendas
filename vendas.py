@@ -7,7 +7,7 @@ import pandas as pd
 
 # Configuração visual da página
 st.set_page_config(
-    page_title="Identificador de Modelos e SKU - OGNET",
+    page_title="Buscador de Modelos e SKU - OGNET BORRACHAS",
     page_icon="🔍",
     layout="centered"
 )
@@ -66,14 +66,14 @@ try:
 except Exception:
     pass  
 
-st.title("🔍 Buscador de MARCA, MODELO, MEDIDAS e SKU - OGNET BORRACHAS")
-st.markdown("Facilitador comercial para o time de vendas OGNET BORRACHAS. Busca automatizada direto da nossa base de modelos.")
+st.title("🔍 Buscador de MODELOS, MEDIDAS e SKU - OGNET BORRACHAS")
+st.markdown("Agente de IA de Vendas da OGNET BORRACHAS. Busca automatizada direto da nossa base de modelos.")
 st.divider()
 
-st.subheader("📋 Critérios de Busca do Produto")
+st.subheader("📋 Critérios para Busca de Produtos")
 
 # Campo 1: Imagem da Etiqueta
-st.markdown("### 📸 1. Foto da Etiqueta do Equipamento (Opcional)")
+st.markdown("### 📸 1. Foto da Etiqueta do Equipamento/Modelo Comercial")
 st.caption("Anexe a foto da etiqueta para a IA identificar o modelo comercial automaticamente.")
 foto_upload = st.file_uploader("Selecione a foto da etiqueta:", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
 
@@ -82,7 +82,7 @@ if foto_upload is not None:
     st.divider()
 
 # Campo 2: Digitação Direta do Modelo
-st.markdown("### ✍️ 2. Digite o Modelo Comercial (Caso não tenha foto)")
+st.markdown("### ✍️ 2. Digite o Modelo Comercial (referencia fica na etiqueta branca, atras ou dentro dos lados)")
 st.caption("Digite o modelo ou parte dele para buscar na tabela.")
 texto_vendedor = st.text_input(
     "Modelo para busca:",
@@ -94,7 +94,7 @@ texto_vendedor = st.text_input(
 st.divider()
 
 # Campo 3: Digitação da Medida Externa
-st.markdown("### 📐 3. Ou pesquise pela Medida Externa (Alternativa)")
+st.markdown("### 📐 3. Ou pesquise pela Medida Externa (canto a canto)")
 st.caption("Digite as dimensões ou parte da medida externa que o cliente informou.")
 medida_vendedor = st.text_input(
     "Medida para busca:",
@@ -226,4 +226,4 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                         st.warning(f"A medida **'{medida_identificada}'** não foi encontrada na coluna MEDIDA-EXTERNA.")
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.caption("© 2026 OGNET BORRACHAS - Divisão de Inteligência Comercial e Catálogo.")
+st.caption("© 2026 OGNET BORRACHAS - Buscador  Inteligência Artificial.")
