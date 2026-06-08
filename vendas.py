@@ -13,9 +13,6 @@ st.set_page_config(
 )
 
 # --- CONFIGURAÇÕES ---
-# URL oficial do seu cenário do Make
-WEBHOOK_VENDAS_URL = "https://hook.us2.make.com/58kq63uwxgpnxc39sgyr2qk88o7o3wrw"
-IMGBB_API_KEY = "c303da0c70a1655c79f00832f7b1456d"
 NOME_PLANILHA = "base_gaxetas.xlsx"
 
 # Customização visual com as cores oficiais OGNET (Azul: #1B2E7C | Laranja: #E96A23)
@@ -154,46 +151,48 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
         prosseguir = False
         
     if prosseguir:
-        # Se tiver foto e o usuário não digitou texto, o Make entra em ação
+        # Se tiver foto e o usuário não digitou texto, usamos o Scanner de Visão Direto superestável
         if foto_upload is not None and not modelo_identificado:
-            with st.spinner("🤖 O Técnico Neto está analisando a foto da etiqueta..."):
+            with st.spinner("🤖 O Técnico Neto está escaneando o texto da etiqueta..."):
                 try:
                     file_bytes = foto_upload.read()
                     base64_image = base64.b64encode(file_bytes).decode('utf-8')
                     
-                    imgbb_url = "https://api.imgbb.com/1/upload"
-                    payload_imgbb = {"key": IMGBB_API_KEY, "image": base64_image, "expiration": 600}
-                    res_imgbb = requests.post(imgbb_url, data=payload_imgbb)
-                    res_data = res_imgbb.json()
+                    # API de Visão Computacional Livre (OCR Engine Oficial)
+                    url_ocr = "https://api.ocr.space/parse/image"
+                    payload_ocr = {
+                        "apikey": "helloworld",  # Chave livre e ilimitada de desenvolvimento
+                        "base64Image": f"data:image/jpeg;base64,{base64_image}",
+                        "language": "por",
+                        "isOverlayRequired": False
+                    }
                     
-                    if res_imgbb.status_code == 200 and res_data.get("success"):
-                        link_foto = res_data["data"]["url"]
-                        
-                        payload = {"foto": link_foto, "texto": "EXTRAIR_MODELO"}
-                        response = requests.post(WEBHOOK_VENDAS_URL, data=payload, timeout=30)
-                        
-                        if response.status_code == 200:
-                            retorno_bruto = response.text.strip()
+                    response_ocr = requests.post(url_ocr, data=payload_ocr, timeout=25)
+                    
+                    if response_ocr.status_code == 200:
+                        res_json = response_ocr.json()
+                        if "ParsedResults" in res_json and len(res_json["ParsedResults"]) > 0:
+                            texto_extraido = res_json["ParsedResults"][0]["ParsedText"].upper()
                             
-                            # Filtra aspas e limpa o texto vindo do Make
-                            retorno_bruto = re.sub(r'[\{\}\[\]"\'\n\r]', '', retorno_bruto)
-                            retorno_bruto = retorno_bruto.replace('result:', '').replace('resposta_ia:', '')
-                            
-                            # Captura o padrão de modelo técnico (Ex: BRM47B, DC44)
-                            modelos_encontrados = re.findall(r'[A-Z]{2,4}\d{2,3}[A-Z]?', retorno_bruto.upper())
+                            # Filtra padrões exatos de modelos comerciais (Ex: BRM47, CRM33, DC44)
+                            modelos_encontrados = re.findall(r'[A-Z]{2,4}\d{2,3}[A-Z]?', texto_extraido)
                             if modelos_encontrados:
                                 modelo_identificado = modelos_encontrados[0]
                             else:
-                                modelo_identificado = re.sub(r'[^A-Z0-9]', '', retorno_bruto.upper()).strip()
+                                # Fallback inteligente se o modelo vier sem letras extras
+                                padrão_curto = re.findall(r'\b\d{2,3}\b', texto_extraido)
+                                if padrão_curto:
+                                    modelo_identificado = padrão_curto[0]
                 except Exception as e:
-                    st.error(f"Erro na análise visual: {e}")
+                    st.error(f"Erro na varredura visual direta: {e}")
 
         # --- Campo de Verificação para o Agente ---
         if foto_upload is not None:
-            if modelo_identificado and str(modelo_identificado).strip() and "ACCEPTED" not in modelo_identificado.upper():
+            if modelo_identificado and str(modelo_identificado).strip():
                 st.info(f"🤖 **Modelo identificado pela foto:** `{modelo_identificado}`")
             else:
-                st.error("❌ A IA não conseguiu extrair um modelo comercial válido. Tente digitar o modelo manualmente no Campo 2.")
+                st.error("❌ O scanner não conseguiu capturar as letras do modelo nesta foto.")
+                st.warning("Por favor, digite o modelo manualmente no Campo 2 para trazer as medidas.")
                 prosseguir = False
 
         # Executa a busca se tivermos algum critério válido após a análise
