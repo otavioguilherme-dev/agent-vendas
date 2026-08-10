@@ -12,7 +12,12 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- CONFIGURAÇÕES ---
+# --- CONFIGURAÇÕES BASELINKER ---
+BASELINKER_API_URL = "https://api.baselinker.com/connector.php"
+API_TOKEN = "8005379-8008488-VNRWQK4RZAPBTQ56SPHT6YDWXDJBJH83WPFY4C99A0E903RNR9SWPA9VO3BAYDZJ"
+ID_TABELA_VENDA_DIRETA = "19191"
+ID_TABELA_INSTALADOR = "39122"
+
 NOME_PLANILHA = "base_gaxetas.xlsx"
 
 # Customização visual com as cores oficiais OGNET (Azul: #1B2E7C | Laranja: #E96A23)
@@ -57,6 +62,14 @@ st.markdown("""
         display: inline-block;
         margin-bottom: 10px;
     }
+    .preco-card {
+        background-color: #ffffff;
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #d1d5db;
+        text-align: center;
+        margin-top: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -67,7 +80,7 @@ except Exception:
     pass  
 
 st.title("🔍 Buscador de MODELOS, MEDIDAS e SKU - OGNET BORRACHAS")
-st.markdown("Agente de IA de Vendas da OGNET BORRACHAS. Busca automatizada direto da nossa base de modelos.")
+st.markdown("Agente de IA de Vendas da OGNET BORRACHAS. Busca automatizada direto da nossa base de modelos com preços integrados.")
 st.divider()
 
 st.subheader("📋 Critérios para Busca de Produtos")
@@ -106,6 +119,7 @@ medida_vendedor = st.text_input(
 st.markdown("<br>", unsafe_allow_html=True)
 
 # --- FUNÇÃO DE BUSCA NA PLANILHA DO GITHUB ---
+@st.cache_data(ttl=300)
 def buscar_na_planilha(termo_modelo, termo_medida):
     try:
         df = pd.read_excel("base_gaxetas.xlsx")
@@ -140,6 +154,38 @@ def buscar_na_planilha(termo_modelo, termo_medida):
         st.error(f"Erro ao ler o arquivo 'base_gaxetas.xlsx' no GitHub: {e}")
         return None
 
+# --- FUNÇÃO PARA PUXAR PREÇO DO BASELINKER VIA SKU ---
+@st.cache_data(ttl=600)
+def buscar_preco_baselinker(sku):
+    headers = {"X-BLToken": API_TOKEN}
+    try:
+        # 1. Pega Inventário
+        resp_inv = requests.post(BASELINKER_API_URL, data={"method": "getInventories", "parameters": json.dumps({})}, headers=headers).json()
+        id_inv = resp_inv.get("inventories", [])[0].get("inventory_id")
+        
+        # 2. Localiza ID do Produto pelo SKU
+        payload_prod = {"method": "getInventoryProductsList", "parameters": json.dumps({"inventory_id": id_inv, "filter_sku": str(sku).strip()})}
+        resp_prod = requests.post(BASELINKER_API_URL, data=payload_prod, headers=headers).json()
+        produtos = resp_prod.get("products", {})
+        if not produtos:
+            return None, None
+            
+        product_id = list(produtos.keys())[0]
+        
+        # 3. Puxa os dados de preço
+        payload_data = {"method": "getInventoryProductsData", "parameters": json.dumps({"inventory_id": id_inv, "products": [int(product_id)]})}
+        resp_data = requests.post(BASELINKER_API_URL, data=payload_data, headers=headers).json()
+        dados_prod = resp_data.get("products", {}).get(str(product_id))
+        
+        if dados_prod:
+            precos = dados_prod.get("prices", {})
+            preco_vd = precos.get(ID_TABELA_VENDA_DIRETA, 0.0)
+            preco_inst = precos.get(ID_TABELA_INSTALADOR, 0.0)
+            return preco_vd, preco_inst
+    except:
+        pass
+    return None, None
+
 # Botão de Execução
 if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_container_width=True):
     modelo_identificado = texto_vendedor.strip()
@@ -151,17 +197,15 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
         prosseguir = False
         
     if prosseguir:
-        # Se tiver foto e o usuário não digitou texto, usamos o Scanner de Visão Direto superestável
         if foto_upload is not None and not modelo_identificado:
-            with st.spinner("🤖 O Especialista em vendas Ptávio Guilherme está escaneando o texto da etiqueta..."):
+            with st.spinner("🤖 O Especialista em vendas Otávio Guilherme está escaneando o texto da etiqueta..."):
                 try:
                     file_bytes = foto_upload.read()
                     base64_image = base64.b64encode(file_bytes).decode('utf-8')
                     
-                    # API de Visão Computacional Livre (OCR Engine Oficial)
                     url_ocr = "https://api.ocr.space/parse/image"
                     payload_ocr = {
-                        "apikey": "helloworld",  # Chave livre e ilimitada de desenvolvimento
+                        "apikey": "helloworld", 
                         "base64Image": f"data:image/jpeg;base64,{base64_image}",
                         "language": "por",
                         "isOverlayRequired": False
@@ -174,12 +218,10 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                         if "ParsedResults" in res_json and len(res_json["ParsedResults"]) > 0:
                             texto_extraido = res_json["ParsedResults"][0]["ParsedText"].upper()
                             
-                            # Filtra padrões exatos de modelos comerciais (Ex: BRM47, CRM33, DC44)
                             modelos_encontrados = re.findall(r'[A-Z]{2,4}\d{2,3}[A-Z]?', texto_extraido)
                             if modelos_encontrados:
                                 modelo_identificado = modelos_encontrados[0]
                             else:
-                                # Fallback inteligente se o modelo vier sem letras extras
                                 padrão_curto = re.findall(r'\b\d{2,3}\b', texto_extraido)
                                 if padrão_curto:
                                     modelo_identificado = padrão_curto[0]
@@ -195,9 +237,9 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                 st.warning("Por favor, digite o modelo manualmente no Campo 2 para trazer as medidas.")
                 prosseguir = False
 
-        # Executa a busca se tivermos algum critério válido após a análise
+        # Executa a busca
         if prosseguir and (modelo_identificado or medida_identificada):
-            with st.spinner("🔍 Procurando dados correspondentes na tabela..."):
+            with st.spinner("🔍 Procurando dados e preços na base..."):
                 tabela_resultados = buscar_na_planilha(modelo_identificado, medida_identificada)
                 
                 if tabela_resultados is not None and not tabela_resultados.empty:
@@ -207,14 +249,31 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                     for index, row in tabela_resultados.iterrows():
                         st.markdown('<div class="vendas-card">', unsafe_allow_html=True)
                         st.markdown(f"### 📦 Produto Localizado:")
-                        if 'SKU' in row:
-                            st.markdown(f"<span class='sku-destaque'>🛒 SKU: {row['SKU']}</span>", unsafe_allow_html=True)
+                        
+                        sku_atual = None
+                        if 'SKU' in row and str(row['SKU']).strip() != 'NAN':
+                            sku_atual = str(row['SKU']).strip()
+                            st.markdown(f"<span class='sku-destaque'>🛒 SKU: {sku_atual}</span>", unsafe_allow_html=True)
                         
                         st.markdown(f"**🔹 MARCA:** {row.get('MARCA', 'N/A')} | **MODELO:** {row.get('MODELO', 'N/A')}")
                         st.markdown(f"**🔹 PERFIL:** {row.get('PERFIL', 'N/A')} | **CÓDIGO INTERNO:** {row.get('CODIGO', 'N/A')}")
                         st.divider()
                         st.markdown(f"📐 **MEDIDA ENCAIXE:** {row.get('MEDIDA-ENCAIXE', 'N/A')}")
                         st.markdown(f"📐 **MEDIDA EXTERNA:** {row.get('MEDIDA-EXTERNA', 'N/A')}")
+                        
+                        # --- INJEÇÃO DOS PREÇOS BASELINKER NO CARD ---
+                        if sku_atual:
+                            preco_vd, preco_inst = buscar_preco_baselinker(sku_atual)
+                            if preco_vd is not None and preco_inst is not None:
+                                st.markdown("#### 💰 Tabela de Preços")
+                                c1, c2 = st.columns(2)
+                                with c1:
+                                    st.markdown(f"<div class='preco-card'><small>Venda Direta</small><br><b>R$ {float(preco_vd):,.2f}</b></div>".replace(",", "X").replace(".", ",").replace("X", "."), unsafe_allow_html=True)
+                                with c2:
+                                    st.markdown(f"<div class='preco-card'><small>Instalador</small><br><b>R$ {float(preco_inst):,.2f}</b></div>".replace(",", "X").replace(".", ",").replace("X", "."), unsafe_allow_html=True)
+                            else:
+                                st.caption("⚠️ Preços não localizados no sistema para este SKU.")
+                                
                         st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     st.error(f"❌ Nenhum produto localizado")
@@ -226,4 +285,4 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                         st.warning(f"A medida **'{medida_identificada}'** não foi encontrada na coluna MEDIDA-EXTERNA.")
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.caption("© 2026 OGNET BORRACHAS - Buscador  Inteligência Artificial.")
+st.caption("© 2026 OGNET BORRACHAS - Buscador Inteligência Artificial.")
