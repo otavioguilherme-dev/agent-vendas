@@ -20,7 +20,7 @@ ID_TABELA_INSTALADOR = "39122"
 
 NOME_PLANILHA = "base_gaxetas.xlsx"
 
-# Customização visual com as cores oficiais OGNET (Azul: #1B2E7C | Laranja: #E96A23)
+# Customização visual com as cores oficiais OGNET
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -61,6 +61,7 @@ st.markdown("""
         border: 1px dashed #E96A23;
         display: inline-block;
         margin-bottom: 10px;
+        margin-top: 10px;
     }
     .preco-card {
         background-color: #ffffff;
@@ -73,19 +74,17 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Cabeçalho Principal com Logo Local
 try:
     st.image("LOGO_BANNER.jpg", width=550)
 except Exception:
     pass  
 
 st.title("🔍 Buscador de MODELOS, MEDIDAS e SKU - OGNET BORRACHAS")
-st.markdown("Agente de IA de Vendas da OGNET BORRACHAS. Busca automatizada direto da nossa base de modelos com preços integrados.")
+st.markdown("Agente de IA de Vendas da OGNET BORRACHAS. Busca automatizada direto da nossa base de modelos com preços e estoque integrados.")
 st.divider()
 
 st.subheader("📋 Critérios para Busca de Produtos")
 
-# Campo 1: Imagem da Etiqueta
 st.markdown("### 📸 1. Foto da Etiqueta do Equipamento/Modelo Comercial")
 st.caption("Anexe a foto da etiqueta para a IA identificar o modelo comercial automaticamente.")
 foto_upload = st.file_uploader("Selecione a foto da etiqueta:", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
@@ -94,7 +93,6 @@ if foto_upload is not None:
     st.image(foto_upload, caption="⚡ Etiqueta carregada para análise", width=400)
     st.divider()
 
-# Campo 2: Digitação Direta do Modelo
 st.markdown("### ✍️ 2. Digite o Modelo Comercial (referencia fica na etiqueta branca, atras ou dentro dos lados)")
 st.caption("Digite o modelo ou parte dele para buscar na tabela.")
 texto_vendedor = st.text_input(
@@ -103,10 +101,8 @@ texto_vendedor = st.text_input(
     label_visibility="collapsed",
     key="busca_vendas"
 )
-
 st.divider()
 
-# Campo 3: Digitação da Medida Externa
 st.markdown("### 📐 3. Pesquise pela Medida Externa (canto a canto)")
 st.caption("Digite as dimensões ou parte da medida externa que o cliente informou.")
 medida_vendedor = st.text_input(
@@ -115,7 +111,6 @@ medida_vendedor = st.text_input(
     label_visibility="collapsed",
     key="busca_medidas"
 )
-
 st.markdown("<br>", unsafe_allow_html=True)
 
 # --- FUNÇÃO DE BUSCA NA PLANILHA DO GITHUB ---
@@ -123,7 +118,6 @@ st.markdown("<br>", unsafe_allow_html=True)
 def buscar_na_planilha(termo_modelo, termo_medida):
     try:
         df = pd.read_excel("base_gaxetas.xlsx")
-        
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.upper()
             
@@ -154,9 +148,9 @@ def buscar_na_planilha(termo_modelo, termo_medida):
         st.error(f"Erro ao ler o arquivo 'base_gaxetas.xlsx' no GitHub: {e}")
         return None
 
-# --- FUNÇÃO PARA PUXAR PREÇO DO BASELINKER VIA SKU ---
+# --- FUNÇÃO PARA PUXAR PREÇO E ESTOQUE DO BASELINKER VIA SKU ---
 @st.cache_data(ttl=600)
-def buscar_preco_baselinker(sku):
+def buscar_dados_baselinker(sku):
     headers = {"X-BLToken": API_TOKEN}
     try:
         # 1. Pega Inventário
@@ -168,11 +162,11 @@ def buscar_preco_baselinker(sku):
         resp_prod = requests.post(BASELINKER_API_URL, data=payload_prod, headers=headers).json()
         produtos = resp_prod.get("products", {})
         if not produtos:
-            return None, None
+            return None, None, None
             
         product_id = list(produtos.keys())[0]
         
-        # 3. Puxa os dados de preço
+        # 3. Puxa os dados de preço e estoque
         payload_data = {"method": "getInventoryProductsData", "parameters": json.dumps({"inventory_id": id_inv, "products": [int(product_id)]})}
         resp_data = requests.post(BASELINKER_API_URL, data=payload_data, headers=headers).json()
         dados_prod = resp_data.get("products", {}).get(str(product_id))
@@ -181,10 +175,15 @@ def buscar_preco_baselinker(sku):
             precos = dados_prod.get("prices", {})
             preco_vd = precos.get(ID_TABELA_VENDA_DIRETA, 0.0)
             preco_inst = precos.get(ID_TABELA_INSTALADOR, 0.0)
-            return preco_vd, preco_inst
+            
+            # Soma o estoque de todos os armazéns/locais vinculados ao produto
+            estoque_dict = dados_prod.get("stock", {})
+            qtd_estoque = sum(estoque_dict.values()) if estoque_dict else 0
+            
+            return preco_vd, preco_inst, qtd_estoque
     except:
         pass
-    return None, None
+    return None, None, None
 
 # Botão de Execução
 if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_container_width=True):
@@ -228,7 +227,6 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                 except Exception as e:
                     st.error(f"Erro na varredura visual direta: {e}")
 
-        # --- Campo de Verificação para o Agente ---
         if foto_upload is not None:
             if modelo_identificado and str(modelo_identificado).strip():
                 st.info(f"🤖 **Modelo identificado pela foto:** `{modelo_identificado}`")
@@ -237,7 +235,6 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                 st.warning("Por favor, digite o modelo manualmente no Campo 2 para trazer as medidas.")
                 prosseguir = False
 
-        # Executa a busca
         if prosseguir and (modelo_identificado or medida_identificada):
             with st.spinner("🔍 Procurando dados e preços na base..."):
                 tabela_resultados = buscar_na_planilha(modelo_identificado, medida_identificada)
@@ -250,30 +247,39 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                         st.markdown('<div class="vendas-card">', unsafe_allow_html=True)
                         st.markdown(f"### 📦 Produto Localizado:")
                         
-                        sku_atual = None
-                        if 'SKU' in row and str(row['SKU']).strip() != 'NAN':
-                            sku_atual = str(row['SKU']).strip()
-                            st.markdown(f"<span class='sku-destaque'>🛒 SKU: {sku_atual}</span>", unsafe_allow_html=True)
-                        
                         st.markdown(f"**🔹 MARCA:** {row.get('MARCA', 'N/A')} | **MODELO:** {row.get('MODELO', 'N/A')}")
                         st.markdown(f"**🔹 PERFIL:** {row.get('PERFIL', 'N/A')} | **CÓDIGO INTERNO:** {row.get('CODIGO', 'N/A')}")
                         st.divider()
                         st.markdown(f"📐 **MEDIDA ENCAIXE:** {row.get('MEDIDA-ENCAIXE', 'N/A')}")
                         st.markdown(f"📐 **MEDIDA EXTERNA:** {row.get('MEDIDA-EXTERNA', 'N/A')}")
+                        st.divider()
                         
-                        # --- INJEÇÃO DOS PREÇOS BASELINKER NO CARD ---
-                        if sku_atual:
-                            preco_vd, preco_inst = buscar_preco_baselinker(sku_atual)
-                            if preco_vd is not None and preco_inst is not None:
-                                st.markdown("#### 💰 Tabela de Preços")
-                                c1, c2 = st.columns(2)
-                                with c1:
-                                    st.markdown(f"<div class='preco-card'><small>Venda Direta</small><br><b>R$ {float(preco_vd):,.2f}</b></div>".replace(",", "X").replace(".", ",").replace("X", "."), unsafe_allow_html=True)
-                                with c2:
-                                    st.markdown(f"<div class='preco-card'><small>Instalador</small><br><b>R$ {float(preco_inst):,.2f}</b></div>".replace(",", "X").replace(".", ",").replace("X", "."), unsafe_allow_html=True)
-                            else:
-                                st.caption("⚠️ Preços não localizados no sistema para este SKU.")
+                        # --- INJEÇÃO INTELIGENTE DE PREÇOS COM MULTI-SKU ---
+                        if 'SKU' in row and str(row['SKU']).strip() != 'NAN':
+                            # Divide o campo SKU usando a barra "/"
+                            skus_brutos = str(row['SKU']).split('/')
+                            
+                            for sku_extraido in skus_brutos:
+                                sku_limpo = sku_extraido.strip()
+                                if not sku_limpo:
+                                    continue
                                 
+                                # Cria o cabeçalho para o SKU atual
+                                st.markdown(f"<div class='sku-destaque'>🛒 SKU: {sku_limpo}</div>", unsafe_allow_html=True)
+                                
+                                preco_vd, preco_inst, qtd_estoque = buscar_dados_baselinker(sku_limpo)
+                                
+                                if preco_vd is not None and preco_inst is not None:
+                                    c1, c2, c3 = st.columns(3)
+                                    with c1:
+                                        st.markdown(f"<div class='preco-card'><small>Venda Direta</small><br><b>R$ {float(preco_vd):,.2f}</b></div>".replace(",", "X").replace(".", ",").replace("X", "."), unsafe_allow_html=True)
+                                    with c2:
+                                        st.markdown(f"<div class='preco-card'><small>Instalador</small><br><b>R$ {float(preco_inst):,.2f}</b></div>".replace(",", "X").replace(".", ",").replace("X", "."), unsafe_allow_html=True)
+                                    with c3:
+                                        st.markdown(f"<div class='preco-card'><small>Estoque</small><br><b>{qtd_estoque} un</b></div>", unsafe_allow_html=True)
+                                else:
+                                    st.caption(f"⚠️ Preços/Estoque não localizados no sistema para o SKU {sku_limpo}.")
+                        
                         st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     st.error(f"❌ Nenhum produto localizado")
