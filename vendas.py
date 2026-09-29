@@ -28,7 +28,8 @@ st.markdown("""
     header {visibility: hidden;}
     [data-testid="stSidebar"] {display: none;}
     
-    div.stButton > button:first-child {
+    /* Botão Principal - Buscar */
+    div.stButton > button[data-testid="baseButton-primary"] {
         background-color: #1B2E7C !important;
         color: white !important;
         border: none !important;
@@ -36,7 +37,7 @@ st.markdown("""
         font-weight: bold !important;
         transition: all 0.3s ease !important;
     }
-    div.stButton > button:first-child:hover {
+    div.stButton > button[data-testid="baseButton-primary"]:hover {
         background-color: #E96A23 !important;
         box-shadow: 0px 4px 10px rgba(233, 106, 35, 0.3) !important;
     }
@@ -85,9 +86,25 @@ st.divider()
 
 st.subheader("📋 Critérios para Busca de Produtos")
 
+# --- INICIALIZAÇÃO DE VARIÁVEIS DE ESTADO (SESSION STATE) ---
+if "uploader_key" not in st.session_state:
+    st.session_state["uploader_key"] = 0
+
+# Função para limpar todos os campos
+def limpar_campos():
+    st.session_state["busca_vendas"] = ""
+    st.session_state["busca_medidas"] = ""
+    st.session_state["busca_sku"] = ""
+    st.session_state["uploader_key"] += 1  # Força o reset do uploader de arquivos
+
 st.markdown("### 📸 1. Foto da Etiqueta do Equipamento/Modelo Comercial")
 st.caption("Anexe a foto da etiqueta para a IA identificar o modelo comercial automaticamente.")
-foto_upload = st.file_uploader("Selecione a foto da etiqueta:", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+foto_upload = st.file_uploader(
+    "Selecione a foto da etiqueta:", 
+    type=["png", "jpg", "jpeg"], 
+    label_visibility="collapsed",
+    key=f"foto_uploader_{st.session_state['uploader_key']}"
+)
 
 if foto_upload is not None:
     st.image(foto_upload, caption="⚡ Etiqueta carregada para análise", width=400)
@@ -207,8 +224,17 @@ def buscar_dados_baselinker(sku):
         pass
     return None, None, None
 
-# Botão de Execução
-if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_container_width=True):
+# --- BOTÕES DE AÇÃO EM COLUNAS ---
+col_busca, col_limpar = st.columns([3, 1])
+
+with col_busca:
+    btn_buscar = st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_container_width=True)
+
+with col_limpar:
+    st.button("🧹 Limpar", on_click=limpar_campos, use_container_width=True)
+
+# Lógica de Execução
+if btn_buscar:
     modelo_identificado = texto_vendedor.strip()
     medida_identificada = medida_vendedor.strip()
     sku_identificado = sku_vendedor.strip()
@@ -279,7 +305,6 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                         
                         # --- INJEÇÃO INTELIGENTE DE PREÇOS COM MULTI-SKU ---
                         if 'SKU' in row and str(row['SKU']).strip() != 'NAN':
-                            # Divide o campo SKU usando a barra "/"
                             skus_brutos = str(row['SKU']).split('/')
                             
                             for sku_extraido in skus_brutos:
@@ -287,11 +312,9 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                                 if not sku_limpo:
                                     continue
                                 
-                                # Se o usuário pesquisou por um SKU específico, destaca e filtra os exibições de SKU correspondentes
                                 if sku_identificado and sku_identificado.upper() not in sku_limpo.upper():
                                     continue
                                 
-                                # Cria o cabeçalho para o SKU atual
                                 st.markdown(f"<div class='sku-destaque'>🛒 SKU: {sku_limpo}</div>", unsafe_allow_html=True)
                                 
                                 preco_vd, preco_inst, qtd_estoque = buscar_dados_baselinker(sku_limpo)
@@ -305,7 +328,7 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                                     with c3:
                                         st.markdown(f"<div class='preco-card'><small>Estoque</small><br><b>{qtd_estoque} un</b></div>", unsafe_allow_html=True)
                                 else:
-                                    st.caption(f"⚠️️ Preços/Estoque não localizados no sistema para o SKU {sku_limpo}.")
+                                    st.caption(f"⚠️ Preços/Estoque não localizados no sistema para o SKU {sku_limpo}.")
                         
                         st.markdown('</div>', unsafe_allow_html=True)
                 else:
