@@ -1,122 +1,230 @@
-import os
+import streamlit as st
 import requests
-import pandas as pd
 import json
-from flask import Flask, request, jsonify
+import base64
+import re
+import pandas as pd
 
-app = Flask(__name__)
+# Configuração visual da página
+st.set_page_config(
+    page_title="Buscador de Modelos e SKU - OGNET BORRACHAS",
+    page_icon="🔍",
+    layout="centered"
+)
 
-# ==========================================
-# CONFIGURAÇÕES DA API E BASELINKER
-# ==========================================
-BASELINKER_API_URL = "https://api.baselinker.com/connector.php"
-API_TOKEN = os.environ.get("BASELINKER_TOKEN", "8005379-8008488-VNRWQK4RZAPBTQ56SPHT6YDWXDJBJH83WPFY4C99A0E903RNR9SWPA9VO3BAYDZJ")
-ID_TABELA_VENDA_DIRETA = "19191"
+# --- CONFIGURAÇÕES ---
+NOME_PLANILHA = "base_gaxetas.xlsx"
 
-def buscar_produto_baselinker(sku):
-    """Busca o produto no BaseLinker e retorna: Nome, Preço e Estoque"""
-    headers = {"X-BLToken": API_TOKEN}
-    try:
-        resp_inv = requests.post(BASELINKER_API_URL, data={"method": "getInventories", "parameters": "{}"}, headers=headers).json()
-        id_inv = resp_inv.get("inventories", [])[0].get("inventory_id")
-        
-        payload_prod = {"method": "getInventoryProductsList", "parameters": json.dumps({"inventory_id": id_inv, "filter_sku": sku.strip()})}
-        resp_prod = requests.post(BASELINKER_API_URL, data=payload_prod, headers=headers).json()
-        produtos = resp_prod.get("products", {})
-        
-        if not produtos: return None, None, None
-        
-        product_id = list(produtos.keys())[0]
-        payload_data = {"method": "getInventoryProductsData", "parameters": json.dumps({"inventory_id": id_inv, "products": [int(product_id)]})}
-        resp_data = requests.post(BASELINKER_API_URL, data=payload_data, headers=headers).json()
-        
-        dados_prod = resp_data.get("products", {}).get(str(product_id))
-        if dados_prod:
-            nome = dados_prod.get("text_fields", {}).get("name", "Produto sem nome")
-            preco = dados_prod.get("prices", {}).get(ID_TABELA_VENDA_DIRETA, 0.0)
-            estoque = sum(dados_prod.get("stock", {}).values()) if dados_prod.get("stock") else 0
-            return nome, float(preco), int(estoque)
-    except:
-        pass
-    return None, None, None
-
-# ==========================================
-# ROTA QUE O TYPEBOT VAI ACESSAR
-# ==========================================
-@app.route('/consultar', methods=['POST'])
-def consultar_modelo():
-    dados = request.json
-    # Pega o que o cliente digitou (agora serve para Modelo ou SKU)
-    termo_busca = dados.get('modelo', '').strip().upper()
+# Customização visual com as cores oficiais OGNET (Azul: #1B2E7C | Laranja: #E96A23)
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    [data-testid="stSidebar"] {display: none;}
     
-    if not termo_busca:
-        return jsonify({"mensagem": "⚠️ Por favor, digite o modelo ou SKU desejado."}), 400
+    div.stButton > button:first-child {
+        background-color: #1B2E7C !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 6px !important;
+        font-weight: bold !important;
+        transition: all 0.3s ease !important;
+    }
+    div.stButton > button:first-child:hover {
+        background-color: #E96A23 !important;
+        box-shadow: 0px 4px 10px rgba(233, 106, 35, 0.3) !important;
+    }
+    
+    h1, h2, h3 { color: #1B2E7C !important; }
+    
+    .vendas-card {
+        background-color: #f1f3f9;
+        border-left: 6px solid #1B2E7C;
+        padding: 22px;
+        border-radius: 8px;
+        margin-top: 15px;
+        box-shadow: 0px 2px 8px rgba(0,0,0,0.05);
+    }
+    .sku-destaque {
+        font-size: 20px;
+        color: #E96A23;
+        font-weight: bold;
+        background-color: #fff;
+        padding: 5px 10px;
+        border-radius: 4px;
+        border: 1px dashed #E96A23;
+        display: inline-block;
+        margin-bottom: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
+# Cabeçalho Principal com Logo Local
+try:
+    st.image("LOGO_BANNER.jpg", width=550)
+except Exception:
+    pass  
+
+st.title("🔍 Buscador de MODELOS, MEDIDAS e SKU - OGNET BORRACHAS")
+st.markdown("Agente de IA de Vendas da OGNET BORRACHAS. Busca automatizada direto da nossa base de modelos.")
+st.divider()
+
+st.subheader("📋 Critérios para Busca de Produtos")
+
+# Campo 1: Imagem da Etiqueta
+st.markdown("### 📸 1. Foto da Etiqueta do Equipamento/Modelo Comercial")
+st.caption("Anexe a foto da etiqueta para a IA identificar o modelo comercial automaticamente.")
+foto_upload = st.file_uploader("Selecione a foto da etiqueta:", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+
+if foto_upload is not None:
+    st.image(foto_upload, caption="⚡ Etiqueta carregada para análise", width=400)
+    st.divider()
+
+# Campo 2: Digitação Direta do Modelo
+st.markdown("### ✍️ 2. Digite o Modelo Comercial (referencia fica na etiqueta branca, atras ou dentro dos lados)")
+st.caption("Digite o modelo ou parte dele para buscar na tabela.")
+texto_vendedor = st.text_input(
+    "Modelo para busca:",
+    placeholder="Ex: BRM44, CRM33, DC44...",
+    label_visibility="collapsed",
+    key="busca_vendas"
+)
+
+st.divider()
+
+# Campo 3: Digitação da Medida Externa
+st.markdown("### 📐 3. Pesquise pela Medida Externa (canto a canto)")
+st.caption("Digite as dimensões ou parte da medida externa que o cliente informou.")
+medida_vendedor = st.text_input(
+    "Medida para busca:",
+    placeholder="Ex: 56X114, 68X160, 56...",
+    label_visibility="collapsed",
+    key="busca_medidas"
+)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# --- FUNÇÃO DE BUSCA NA PLANILHA DO GITHUB ---
+def buscar_na_planilha(termo_modelo, termo_medida):
     try:
-        # 1. TENTA BUSCAR PRIMEIRO NA PLANILHA (Excel)
         df = pd.read_excel("base_gaxetas.xlsx")
+
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.upper()
-            
-        coluna_modelo = [c for c in df.columns if 'MODELO' in c or 'PRODUTO' in c or 'CODIGO' in c][0]
-        colunas_sku = [c for c in df.columns if 'SKU' in c]
-        nome_col_sku = colunas_sku[0] if colunas_sku else ''
-        
-        # Filtra na planilha buscando tanto no Modelo quanto no SKU
-        if nome_col_sku:
-            resultado = df[(df[coluna_modelo].str.contains(termo_busca, na=False)) | (df[nome_col_sku].str.contains(termo_busca, na=False))]
-        else:
-            resultado = df[df[coluna_modelo].str.contains(termo_busca, na=False)]
-        
-        if not resultado.empty:
-            # Achou na planilha! (É uma gaxeta/borracha)
-            row = resultado.iloc[0]
-            marca = row.get('MARCA', 'N/A')
-            modelo_encontrado = row.get(coluna_modelo, 'N/A')
-            medida_ext = row.get('MEDIDA-EXTERNA', 'N/A')
-            medida_enc = row.get('MEDIDA-ENCAIXE', 'N/A')
-            sku_bruto = row.get(nome_col_sku, '') if nome_col_sku else ''
-            
-            if sku_bruto == 'NAN' or not sku_bruto:
-                msg = f"📦 *Produto Localizado*\n\n🔹 *Marca:* {marca}\n🔹 *Modelo:* {modelo_encontrado}\n📐 *Medida Ext:* {medida_ext}\n📐 *Medida Enc:* {medida_enc}\n\n⚠️ *Preço indisponível no momento.*\nDeseja falar comigo para cotar esse item? Digite *0*."
-                return jsonify({"mensagem": msg})
-                
-            skus = str(sku_bruto).split('/')
-            detalhes_skus = []
-            
-            for s in skus:
-                sku_limpo = s.strip()
-                if not sku_limpo: continue
-                
-                nome_prod, preco, estoque = buscar_produto_baselinker(sku_limpo)
-                if preco is not None:
-                    status_estoque = f"✅ {estoque} peças" if estoque > 0 else "⏳ Sob encomenda"
-                    valor_formatado = f"R$ {preco:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-                    txt = f"🛒 *SKU:* {sku_limpo}\n💰 *Preço:* {valor_formatado}\n📦 *Estoque:* {status_estoque}"
-                    detalhes_skus.append(txt)
+
+        resultado = df.copy()
+
+        if termo_modelo and str(termo_modelo).strip():
+            termo_mod = str(termo_modelo).strip().upper()
+            if 'MODELO' in df.columns:
+                resultado = resultado[resultado['MODELO'].str.contains(termo_mod, na=False)]
+            else:
+                coluna_modelo = [c for c in df.columns if 'MODELO' in c or 'PRODUTO' in c or 'CODIGO' in c]
+                if coluna_modelo:
+                    resultado = resultado[resultado[coluna_modelo[0]].str.contains(termo_mod, na=False)]
                 else:
-                    detalhes_skus.append(f"🛒 *SKU:* {sku_limpo}\n⚠️ *Preço não localizado.*")
-                    
-            texto_skus = "\n\n".join(detalhes_skus)
-            mensagem_final = f"📦 *Gaxeta Localizada!*\n\n🔹 *Marca:* {marca}\n🔹 *Modelo:* {modelo_encontrado}\n📐 *Medida Ext:* {medida_ext}\n\n{texto_skus}\n\n👉 *Quer fechar o pedido ou tirar dúvidas? Digite 0 para falar comigo.*"
-            return jsonify({"mensagem": mensagem_final})
+                    resultado = resultado[resultado[df.columns[0]].str.contains(termo_mod, na=False)]
 
-        # 2. SE NÃO ACHOU NA PLANILHA, TENTA BUSCAR DIRETO NO BASELINKER
-        # (Ideal para quando você digita direto um SKU de outro produto da loja)
-        nome_prod, preco, estoque = buscar_produto_baselinker(termo_busca)
-        
-        if preco is not None:
-            status_estoque = f"✅ {estoque} peças" if estoque > 0 else "⏳ Sob encomenda"
-            valor_formatado = f"R$ {preco:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-            
-            msg_bl = f"📦 *Produto Localizado*\n\n🔹 *Nome:* {nome_prod}\n🛒 *SKU:* {termo_busca}\n💰 *Preço:* {valor_formatado}\n📦 *Estoque:* {status_estoque}\n\n👉 *Quer fechar o pedido ou tirar dúvidas? Digite 0 para falar comigo.*"
-            return jsonify({"mensagem": msg_bl})
-        
-        # 3. SE NÃO ACHOU EM LUGAR NENHUM
-        return jsonify({"mensagem": f"❌ Poxa, não encontrei o modelo ou SKU *{termo_busca}*.\n\nQuer falar com o Otávio para ele verificar para você? Digite *0*."})
-        
+        if termo_medida and str(termo_medida).strip():
+            termo_med = str(termo_medida).strip().upper()
+            if 'MEDIDA-EXTERNA' in df.columns:
+                resultado = resultado[resultado['MEDIDA-EXTERNA'].str.contains(termo_med, na=False)]
+            else:
+                coluna_medida = [c for c in df.columns if 'EXTERNA' in c]
+                if coluna_medida:
+                    resultado = resultado[resultado[coluna_medida[0]].str.contains(termo_med, na=False)]
+
+        return resultado
     except Exception as e:
-        return jsonify({"mensagem": "❌ Ocorreu um erro interno ao buscar os dados.\nDigite *0* para falar com o atendente."}), 500
+        st.error(f"Erro ao ler o arquivo 'base_gaxetas.xlsx' no GitHub: {e}")
+        return None
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+# Botão de Execução
+if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_container_width=True):
+    modelo_identificado = texto_vendedor.strip()
+    medida_identificada = medida_vendedor.strip()
+    prosseguir = True
+
+    if not modelo_identificado and not medida_identificada and foto_upload is None:
+        st.warning("Por favor, preencha pelo menos um critério (Foto, Modelo ou Medida) para realizar a busca.")
+        prosseguir = False
+
+    if prosseguir:
+        # Se tiver foto e o usuário não digitou texto, usamos o Scanner de Visão Direto superestável
+        if foto_upload is not None and not modelo_identificado:
+            with st.spinner("🤖 O Técnico Neto está escaneando o texto da etiqueta..."):
+            with st.spinner("🤖 O Especialista em vendas Ptávio Guilherme está escaneando o texto da etiqueta..."):
+                try:
+                    file_bytes = foto_upload.read()
+                    base64_image = base64.b64encode(file_bytes).decode('utf-8')
+
+                    # API de Visão Computacional Livre (OCR Engine Oficial)
+                    url_ocr = "https://api.ocr.space/parse/image"
+                    payload_ocr = {
+                        "apikey": "helloworld",  # Chave livre e ilimitada de desenvolvimento
+                        "base64Image": f"data:image/jpeg;base64,{base64_image}",
+                        "language": "por",
+                        "isOverlayRequired": False
+                    }
+
+                    response_ocr = requests.post(url_ocr, data=payload_ocr, timeout=25)
+
+                    if response_ocr.status_code == 200:
+                        res_json = response_ocr.json()
+                        if "ParsedResults" in res_json and len(res_json["ParsedResults"]) > 0:
+                            texto_extraido = res_json["ParsedResults"][0]["ParsedText"].upper()
+
+                            # Filtra padrões exatos de modelos comerciais (Ex: BRM47, CRM33, DC44)
+                            modelos_encontrados = re.findall(r'[A-Z]{2,4}\d{2,3}[A-Z]?', texto_extraido)
+                            if modelos_encontrados:
+                                modelo_identificado = modelos_encontrados[0]
+                            else:
+                                # Fallback inteligente se o modelo vier sem letras extras
+                                padrão_curto = re.findall(r'\b\d{2,3}\b', texto_extraido)
+                                if padrão_curto:
+                                    modelo_identificado = padrão_curto[0]
+                except Exception as e:
+                    st.error(f"Erro na varredura visual direta: {e}")
+
+        # --- Campo de Verificação para o Agente ---
+        if foto_upload is not None:
+            if modelo_identificado and str(modelo_identificado).strip():
+                st.info(f"🤖 **Modelo identificado pela foto:** `{modelo_identificado}`")
+            else:
+                st.error("❌ O scanner não conseguiu capturar as letras do modelo nesta foto.")
+                st.warning("Por favor, digite o modelo manualmente no Campo 2 para trazer as medidas.")
+                prosseguir = False
+
+        # Executa a busca se tivermos algum critério válido após a análise
+        if prosseguir and (modelo_identificado or medida_identificada):
+            with st.spinner("🔍 Procurando dados correspondentes na tabela..."):
+                tabela_resultados = buscar_na_planilha(modelo_identificado, medida_identificada)
+
+                if tabela_resultados is not None and not tabela_resultados.empty:
+                    st.success("Resultados localizados com sucesso!")
+                    st.info(f"📋 Encontrado(s) {len(tabela_resultados)} produto(s) correspondente(s):")
+
+                    for index, row in tabela_resultados.iterrows():
+                        st.markdown('<div class="vendas-card">', unsafe_allow_html=True)
+                        st.markdown(f"### 📦 Produto Localizado:")
+                        if 'SKU' in row:
+                            st.markdown(f"<span class='sku-destaque'>🛒 SKU: {row['SKU']}</span>", unsafe_allow_html=True)
+
+                        st.markdown(f"**🔹 MARCA:** {row.get('MARCA', 'N/A')} | **MODELO:** {row.get('MODELO', 'N/A')}")
+                        st.markdown(f"**🔹 PERFIL:** {row.get('PERFIL', 'N/A')} | **CÓDIGO INTERNO:** {row.get('CODIGO', 'N/A')}")
+                        st.divider()
+                        st.markdown(f"📐 **MEDIDA ENCAIXE:** {row.get('MEDIDA-ENCAIXE', 'N/A')}")
+                        st.markdown(f"📐 **MEDIDA EXTERNA:** {row.get('MEDIDA-EXTERNA', 'N/A')}")
+                        st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.error(f"❌ Nenhum produto localizado")
+                    if modelo_identificado and medida_identificada:
+                        st.warning(f"Não encontramos combinações para o modelo **'{modelo_identificado}'** com a medida **'{medida_identificada}'**.")
+                    elif modelo_identificado:
+                        st.warning(f"O modelo **'{modelo_identificado}'** não foi encontrado na coluna MODELO da planilha.")
+                    elif medida_identificada:
+                        st.warning(f"A medida **'{medida_identificada}'** não foi encontrada na coluna MEDIDA-EXTERNA.")
+
+st.markdown("<br><hr>", unsafe_allow_html=True)
+st.caption("© 2026 OGNET BORRACHAS - Buscador  Inteligência Artificial.")
