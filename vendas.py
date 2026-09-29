@@ -111,11 +111,21 @@ medida_vendedor = st.text_input(
     label_visibility="collapsed",
     key="busca_medidas"
 )
+st.divider()
+
+st.markdown("### 🛒 4. Pesquise pelo SKU do Produto")
+st.caption("Digite o SKU exato ou parte do código SKU do produto.")
+sku_vendedor = st.text_input(
+    "SKU para busca:",
+    placeholder="Ex: GAX-BRM44-01, 10203...",
+    label_visibility="collapsed",
+    key="busca_sku"
+)
 st.markdown("<br>", unsafe_allow_html=True)
 
 # --- FUNÇÃO DE BUSCA NA PLANILHA DO GITHUB ---
 @st.cache_data(ttl=300)
-def buscar_na_planilha(termo_modelo, termo_medida):
+def buscar_na_planilha(termo_modelo, termo_medida, termo_sku):
     try:
         df = pd.read_excel("base_gaxetas.xlsx")
         for col in df.columns:
@@ -123,6 +133,7 @@ def buscar_na_planilha(termo_modelo, termo_medida):
             
         resultado = df.copy()
         
+        # Filtro por Modelo
         if termo_modelo and str(termo_modelo).strip():
             termo_mod = str(termo_modelo).strip().upper()
             if 'MODELO' in df.columns:
@@ -134,6 +145,7 @@ def buscar_na_planilha(termo_modelo, termo_medida):
                 else:
                     resultado = resultado[resultado[df.columns[0]].str.contains(termo_mod, na=False)]
                     
+        # Filtro por Medida
         if termo_medida and str(termo_medida).strip():
             termo_med = str(termo_medida).strip().upper()
             if 'MEDIDA-EXTERNA' in df.columns:
@@ -142,6 +154,16 @@ def buscar_na_planilha(termo_modelo, termo_medida):
                 coluna_medida = [c for c in df.columns if 'EXTERNA' in c]
                 if coluna_medida:
                     resultado = resultado[resultado[coluna_medida[0]].str.contains(termo_med, na=False)]
+
+        # Filtro por SKU
+        if termo_sku and str(termo_sku).strip():
+            termo_s = str(termo_sku).strip().upper()
+            if 'SKU' in df.columns:
+                resultado = resultado[resultado['SKU'].str.contains(termo_s, na=False)]
+            else:
+                coluna_sku = [c for c in df.columns if 'SKU' in c]
+                if coluna_sku:
+                    resultado = resultado[resultado[coluna_sku[0]].str.contains(termo_s, na=False)]
                     
         return resultado
     except Exception as e:
@@ -189,10 +211,11 @@ def buscar_dados_baselinker(sku):
 if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_container_width=True):
     modelo_identificado = texto_vendedor.strip()
     medida_identificada = medida_vendedor.strip()
+    sku_identificado = sku_vendedor.strip()
     prosseguir = True
     
-    if not modelo_identificado and not medida_identificada and foto_upload is None:
-        st.warning("Por favor, preencha pelo menos um critério (Foto, Modelo ou Medida) para realizar a busca.")
+    if not modelo_identificado and not medida_identificada and not sku_identificado and foto_upload is None:
+        st.warning("Por favor, preencha pelo menos um critério (Foto, Modelo, Medida ou SKU) para realizar a busca.")
         prosseguir = False
         
     if prosseguir:
@@ -235,9 +258,9 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                 st.warning("Por favor, digite o modelo manualmente no Campo 2 para trazer as medidas.")
                 prosseguir = False
 
-        if prosseguir and (modelo_identificado or medida_identificada):
+        if prosseguir and (modelo_identificado or medida_identificada or sku_identificado):
             with st.spinner("🔍 Procurando dados e preços na base..."):
-                tabela_resultados = buscar_na_planilha(modelo_identificado, medida_identificada)
+                tabela_resultados = buscar_na_planilha(modelo_identificado, medida_identificada, sku_identificado)
                 
                 if tabela_resultados is not None and not tabela_resultados.empty:
                     st.success("Resultados localizados com sucesso!")
@@ -264,6 +287,10 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                                 if not sku_limpo:
                                     continue
                                 
+                                # Se o usuário pesquisou por um SKU específico, destaca e filtra os exibições de SKU correspondentes
+                                if sku_identificado and sku_identificado.upper() not in sku_limpo.upper():
+                                    continue
+                                
                                 # Cria o cabeçalho para o SKU atual
                                 st.markdown(f"<div class='sku-destaque'>🛒 SKU: {sku_limpo}</div>", unsafe_allow_html=True)
                                 
@@ -278,17 +305,17 @@ if st.button("🔍 Localizar SKU e Medidas na Tabela", type="primary", use_conta
                                     with c3:
                                         st.markdown(f"<div class='preco-card'><small>Estoque</small><br><b>{qtd_estoque} un</b></div>", unsafe_allow_html=True)
                                 else:
-                                    st.caption(f"⚠️ Preços/Estoque não localizados no sistema para o SKU {sku_limpo}.")
+                                    st.caption(f"⚠️️ Preços/Estoque não localizados no sistema para o SKU {sku_limpo}.")
                         
                         st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     st.error(f"❌ Nenhum produto localizado")
-                    if modelo_identificado and medida_identificada:
-                        st.warning(f"Não encontramos combinações para o modelo **'{modelo_identificado}'** com a medida **'{medida_identificada}'**.")
-                    elif modelo_identificado:
-                        st.warning(f"O modelo **'{modelo_identificado}'** não foi encontrado na coluna MODELO da planilha.")
-                    elif medida_identificada:
-                        st.warning(f"A medida **'{medida_identificada}'** não foi encontrada na coluna MEDIDA-EXTERNA.")
+                    filtros_aplicados = []
+                    if modelo_identificado: filtros_aplicados.append(f"Modelo: '{modelo_identificado}'")
+                    if medida_identificada: filtros_aplicados.append(f"Medida: '{medida_identificada}'")
+                    if sku_identificado: filtros_aplicados.append(f"SKU: '{sku_identificado}'")
+                    
+                    st.warning(f"Não encontramos combinações para: {', '.join(filtros_aplicados)}.")
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
 st.caption("© 2026 OGNET BORRACHAS - Buscador Inteligência Artificial.")
